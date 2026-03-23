@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Benchmark / results data
+bench_512/
+boltz_results_*/
+examples/set_512/
+examples/set_512_boltz/
+
+# Model weights / large files
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Logs
+*.log
+wandb/
+lightning_logs/

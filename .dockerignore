@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+*.egg-info
+dist
+build
+docker_outputs
+alphafast-code
+alphafold3-code
