@@ -22,7 +22,7 @@ Downloads pre-built MMseqs2-GPU databases directly to your Modal volume. This is
 modal run modal/upload_dbs.py --from-hf
 
 # Or specify a custom HuggingFace dataset repo
-modal run modal/upload_dbs.py --from-hf --hf-repo RomeroLab-Duke/boltz-mmseqs-db
+modal run modal/upload_dbs.py --from-hf --hf-repo RomeroLab-Duke/lightning-boltz-data
 ```
 
 **Option B: Build from source**

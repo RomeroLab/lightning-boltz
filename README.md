@@ -186,17 +186,82 @@ See [`docs/HPC.md`](docs/HPC.md) for installation, resource sizing, and troubles
 
 ## Modal Setup
 
-> **Note:** Modal support is experimental. See [`modal/README.md`](modal/README.md) for current status and known issues.
+Run Lightning-Boltz on [Modal](https://modal.com) serverless GPUs — no hardware to manage, pay per second of compute.
+
+### Step 2: Install Modal
 
 ```bash
-uv pip install modal && modal token set
+pip install modal
+modal setup  # authenticate with your Modal account
+```
 
-# One-time database setup
-modal run modal/prepare_databases.py
+### Step 3: Set Up Databases (one-time)
 
-# Run predictions
+**Option A: Download pre-built from HuggingFace (recommended)**
+
+Downloads pre-built MMseqs2-GPU databases directly to your Modal volume. No compilation or indexing needed.
+
+```bash
+modal run modal/upload_dbs.py --from-hf
+```
+
+**Option B: Build from source**
+
+Downloads raw databases and builds MMseqs2 GPU-padded indexes from scratch. Takes several hours.
+
+```bash
+# ColabFold databases (~150 GB, recommended)
+modal run modal/upload_dbs.py
+
+# AlphaFold3 databases (~800 GB)
+modal run modal/upload_dbs.py --mode alphafold3
+
+# ColabFold + UniProt for paired MSA
+modal run modal/upload_dbs.py --with-uniprot
+```
+
+### Step 4: Set Up Model Checkpoints (one-time)
+
+```bash
+# Download inside Modal
+modal run modal/benchmark.py --download-models
+
+# Or upload from local cache
+modal run modal/upload_models.py --local-dir ~/.boltz
+```
+
+### Step 5: Run Predictions
+
+```bash
 modal run modal/predict.py --input examples/prot.yaml
 ```
+
+Or run the full benchmark suite:
+
+```bash
+modal run modal/benchmark.py --run
+```
+
+### Status Check
+
+```bash
+# Check databases + checkpoints
+modal run modal/benchmark.py --status
+
+# Check databases only
+modal run modal/upload_dbs.py --check
+```
+
+### Cost Estimate
+
+| GPU | ~Cost/hour | Typical prediction time |
+|-----|-----------|------------------------|
+| A10G | $1.10 | 8–15 min |
+| A100 | $3.00 | 3–8 min |
+
+Plus ~$0.15/GB/month for database storage (~150 GB ColabFold = ~$22/month).
+
+See [`modal/README.md`](modal/README.md) for architecture details and troubleshooting.
 
 ---
 

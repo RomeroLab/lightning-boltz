@@ -31,7 +31,7 @@ DB_MOUNT_PATH = "/data/boltz_dbs"
 STAGING_DIR = "/tmp/boltz_dbs_staging"
 
 # Default HuggingFace repo for pre-built databases
-DEFAULT_HF_REPO = "RomeroLab-Duke/boltz-mmseqs-db"
+DEFAULT_HF_REPO = "RomeroLab-Duke/lightning-boltz-data"
 
 app = modal.App(APP_NAME)
 db_volume = modal.Volume.from_name(DB_VOLUME_NAME, create_if_missing=True)
