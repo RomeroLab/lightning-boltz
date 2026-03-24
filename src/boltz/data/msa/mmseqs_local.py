@@ -1193,6 +1193,8 @@ def _compute_nucleotide_msa(
     seq_dict = dict(zip(seq_names, nucleotide_data.values()))
 
     # Search against all nucleotide databases (CPU only, no GPU)
+    # Fixed at 16 threads for nucleotide CPU search
+    nuc_threads = 16
     unpaired_results = pipelined_search(
         binary=mmseqs_binary,
         sequences=seq_dict,
@@ -1201,7 +1203,7 @@ def _compute_nucleotide_msa(
         sensitivity=sensitivity,
         gpu_enabled=False,
         gpu_device=None,
-        threads=threads,
+        threads=nuc_threads,
         temp_dir=temp_dir,
     )
 
