@@ -4,7 +4,7 @@
 
 Ultra-high-throughput inference with [Boltz-2](https://doi.org/10.1101/2025.06.14.659707). Replaces the MMSeqs2 web server dependency with local [MMseqs2-GPU](https://github.com/soedinglab/MMseqs2) for GPU-accelerated MSA generation. Inference can run offline with no rate limits or network latency.
 
-Adapted from [AlphaFast](https://github.com/RomeroLab/alphafast), which integrates MMseqs2-GPU into AlphaFold 3.
+Adapted techniques from [AlphaFast](https://github.com/RomeroLab/alphafast), which integrates MMseqs2-GPU into AlphaFold 3.
 
 Check out the AlphaFast [preprint](https://www.biorxiv.org/content/10.64898/2026.02.17.706409v1.article-metrics), the Boltz-2 [preprint](https://www.biorxiv.org/content/10.1101/2025.06.14.659707v1), and the MMSeqs2-GPU [publication](https://www.nature.com/articles/s41592-025-02819-8)!
 
@@ -14,9 +14,9 @@ Check out the AlphaFast [preprint](https://www.biorxiv.org/content/10.64898/2026
 
 | Environment | Requirements | Jump to |
 |-------------|-------------|---------|
-| Local (Package) | `uv`, CUDA GPU | [Bare Metal Setup](#bare-metal-setup) |
-| Local (Docker) | Docker, CUDA GPU | [Docker Setup](#docker-setup) |
-| HPC Cluster | Singularity, SLURM | [HPC Setup](#hpc-setup) |
+| Local (Package) |`uv` or `pip`| [Bare Metal Setup](#bare-metal-setup) |
+| Local (Docker) | Docker | [Docker Setup](#docker-setup) |
+| HPC (Singularity) | Singularity, SLURM | [HPC Setup](#hpc-setup) |
 | Modal (Serverless) | Modal Billing Account | [Modal Setup](#modal-setup) |
 
 ---
@@ -32,14 +32,17 @@ bash scripts/install_lightning_boltz.sh
 Or step-by-step:
 
 ```bash
+# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create and activate virtual environment
 uv venv ~/boltz-env && source ~/boltz-env/bin/activate
 uv pip install -e ".[cuda]"
 
 # Install MMseqs2-GPU binary
 wget https://mmseqs.com/latest/mmseqs-linux-gpu.tar.gz
 tar xzf mmseqs-linux-gpu.tar.gz
-mkdir -p ~/.local/bin && cp mmseqs/bin/mmseqs ~/.local/bin/  # no root needed
+mkdir -p ~/.local/bin && cp mmseqs/bin/mmseqs ~/.local/bin/
 rm -rf mmseqs mmseqs-linux-gpu.tar.gz
 ```
 
