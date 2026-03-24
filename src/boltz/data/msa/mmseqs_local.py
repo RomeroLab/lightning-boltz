@@ -103,6 +103,68 @@ def detect_databases(db_dir: str) -> dict[str, str]:
     return databases
 
 
+def detect_nucleotide_databases(rna_db_dir: Optional[str]) -> dict[str, str]:
+    """Detect available nucleotide MMseqs2 databases for DNA/RNA MSA.
+
+    Looks for nt_rna, rfam, and rnacentral databases (AlphaFold3-style).
+    These databases are typically NOT GPU-padded and use CPU search.
+
+    Parameters
+    ----------
+    rna_db_dir : str or None
+        Directory containing nucleotide MMseqs2 databases.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping of logical name to database path.
+
+    """
+    if rna_db_dir is None or not os.path.isdir(rna_db_dir):
+        return {}
+
+    databases = {}
+    db_candidates = {
+        "nt_rna": ["nt_rna", "nt_rna_padded"],
+        "rfam": ["rfam", "rfam_padded"],
+        "rnacentral": ["rnacentral", "rnacentral_padded"],
+    }
+
+    for db_key, candidates in db_candidates.items():
+        for name in candidates:
+            path = os.path.join(rna_db_dir, name)
+            if os.path.exists(f"{path}.dbtype"):
+                databases[db_key] = path
+                break
+
+    return databases
+
+
+def auto_detect_rna_db_dir(protein_db_dir: str) -> Optional[str]:
+    """Auto-detect nucleotide DB directory as a sibling of the protein DB dir.
+
+    Checks for ``mmseqs_rna/`` next to the protein database directory.
+    For example, if protein_db_dir is ``/data/databases/mmseqs``, checks
+    for ``/data/databases/mmseqs_rna``.
+
+    Parameters
+    ----------
+    protein_db_dir : str
+        Directory containing protein MMseqs2 databases.
+
+    Returns
+    -------
+    str or None
+        Path to nucleotide DB directory, or None if not found.
+
+    """
+    parent = os.path.dirname(os.path.normpath(protein_db_dir))
+    rna_dir = os.path.join(parent, "mmseqs_rna")
+    if os.path.isdir(rna_dir):
+        return rna_dir
+    return None
+
+
 def _run_mmseqs_cmd(
     cmd: list[str],
     name: str = "mmseqs",
@@ -852,11 +914,15 @@ def compute_msa_local(
     threads: Optional[int] = None,
     temp_dir: Optional[str] = None,
     sensitivity: float = 7.5,
+    nucleotide_data: Optional[dict[str, str]] = None,
+    rna_db_dir: Optional[str] = None,
 ) -> None:
     """Compute MSA locally using MMseqs2-GPU.
 
     Drop-in replacement for compute_msa() that uses local GPU-accelerated
-    search instead of the ColabFold server API.
+    search instead of the ColabFold server API. Also supports DNA/RNA
+    nucleotide MSA generation using CPU-based search against nucleotide
+    databases (nt_rna, rfam, rnacentral).
 
     Parameters
     ----------
@@ -883,6 +949,11 @@ def compute_msa_local(
         Directory for temporary files.
     sensitivity : float
         Search sensitivity (1-7.5, default 7.5).
+    nucleotide_data : dict[str, str] or None
+        Mapping of msa_id → nucleotide sequence for DNA/RNA chains.
+    rna_db_dir : str or None
+        Directory containing nucleotide MMseqs2 databases.
+        Auto-detected as sibling ``mmseqs_rna/`` of mmseqs_db_dir if None.
 
     """
     # Find binary
@@ -1052,9 +1123,132 @@ def compute_msa_local(
         with msa_path.open("w") as f:
             f.write("\n".join(csv_str))
 
+    # ---- Nucleotide MSA (DNA/RNA) ----
+    if nucleotide_data:
+        _compute_nucleotide_msa(
+            nucleotide_data=nucleotide_data,
+            target_id=target_id,
+            msa_dir=msa_dir,
+            mmseqs_binary=mmseqs_binary,
+            mmseqs_db_dir=mmseqs_db_dir,
+            rna_db_dir=rna_db_dir,
+            threads=threads,
+            temp_dir=temp_dir,
+            sensitivity=sensitivity,
+        )
+
+    total_seqs = len(data) + (len(nucleotide_data) if nucleotide_data else 0)
     click.echo(
         f"Local MSA generation complete for target {target_id}: "
-        f"{len(data)} sequences"
+        f"{total_seqs} sequences ({len(data)} protein"
+        + (f", {len(nucleotide_data)} nucleotide)" if nucleotide_data else ")")
+    )
+
+
+def _compute_nucleotide_msa(
+    nucleotide_data: dict[str, str],
+    target_id: str,
+    msa_dir: Path,
+    mmseqs_binary: str,
+    mmseqs_db_dir: str,
+    rna_db_dir: Optional[str],
+    threads: int,
+    temp_dir: Optional[str],
+    sensitivity: float,
+) -> None:
+    """Compute MSA for DNA/RNA sequences using nucleotide databases.
+
+    Searches against nt_rna, rfam, and rnacentral databases using CPU mode
+    (nucleotide DBs are not GPU-padded). No taxonomy-based pairing is
+    performed for nucleotide sequences.
+
+    """
+    # Auto-detect RNA DB directory if not provided
+    if rna_db_dir is None:
+        rna_db_dir = auto_detect_rna_db_dir(mmseqs_db_dir)
+
+    nuc_databases = detect_nucleotide_databases(rna_db_dir)
+    if not nuc_databases:
+        logger.warning(
+            "No nucleotide databases found (checked: %s). "
+            "DNA/RNA chains will have empty MSAs. "
+            "Set --rna_db_dir to the directory containing nt_rna, rfam, "
+            "rnacentral MMseqs2 databases.",
+            rna_db_dir or "none (auto-detect failed)",
+        )
+        # Write query-only MSAs for each nucleotide sequence
+        for name, seq in nucleotide_data.items():
+            csv_str = f"key,sequence\n-1,{seq}"
+            msa_path = msa_dir / f"{name}.csv"
+            with msa_path.open("w") as f:
+                f.write(csv_str)
+        return
+
+    click.echo(
+        f"Nucleotide MSA search for {len(nucleotide_data)} DNA/RNA sequences "
+        f"(CPU mode, databases: {', '.join(nuc_databases.keys())})"
+    )
+
+    seq_names = list(nucleotide_data.keys())
+    seq_dict = dict(zip(seq_names, nucleotide_data.values()))
+
+    # Search against all nucleotide databases (CPU only, no GPU)
+    unpaired_results = pipelined_search(
+        binary=mmseqs_binary,
+        sequences=seq_dict,
+        database_paths=nuc_databases,
+        e_value=1e-3,
+        sensitivity=sensitivity,
+        gpu_enabled=False,
+        gpu_device=None,
+        threads=threads,
+        temp_dir=temp_dir,
+    )
+
+    # Merge results from all nucleotide databases per sequence
+    # Use nt_rna as primary (largest), append rfam and rnacentral hits
+    primary_db = "nt_rna" if "nt_rna" in nuc_databases else next(iter(nuc_databases))
+    for name in seq_names:
+        parts = [unpaired_results.get(primary_db, {}).get(name, "")]
+
+        for db_name in nuc_databases:
+            if db_name == primary_db:
+                continue
+            db_a3m = unpaired_results.get(db_name, {}).get(name, "")
+            if db_a3m:
+                # Skip the query entry from secondary DBs to avoid dupes
+                lines = db_a3m.strip().splitlines()
+                second_header_idx = None
+                found_first = False
+                for j, line in enumerate(lines):
+                    if line.startswith(">"):
+                        if not found_first:
+                            found_first = True
+                        else:
+                            second_header_idx = j
+                            break
+                if second_header_idx is not None:
+                    parts.append("\n".join(lines[second_header_idx:]))
+
+        merged_a3m = "\n".join(parts) + "\n"
+
+        # Extract sequences and write CSV (unpaired only, no pairing for nucleotides)
+        unpaired = _extract_sequences_from_a3m(merged_a3m)
+        unpaired = unpaired[: const.max_msa_seqs]
+
+        seqs = unpaired
+        keys = [-1] * len(seqs)
+
+        csv_str = ["key,sequence"] + [
+            f"{key},{seq}" for key, seq in zip(keys, seqs)
+        ]
+
+        msa_path = msa_dir / f"{name}.csv"
+        with msa_path.open("w") as f:
+            f.write("\n".join(csv_str))
+
+    click.echo(
+        f"Nucleotide MSA generation complete: {len(nucleotide_data)} sequences"
     )
 
 
@@ -1070,13 +1264,15 @@ def compute_msa_local_batched(
     temp_dir: Optional[str] = None,
     sensitivity: float = 7.5,
     batch_size: int = 512,
+    nucleotide_targets: Optional[dict[str, dict[str, str]]] = None,
+    rna_db_dir: Optional[str] = None,
 ) -> None:
     """Compute MSA for multiple targets using batched GPU search.
 
     Collects all unique sequences across targets and runs ONE pipelined
     GPU search for unpaired MSA, then runs per-target paired MSA search
-    for multi-chain targets. This avoids redundant createdb + GPU search
-    calls when processing many input files.
+    for multi-chain targets. Also handles nucleotide (DNA/RNA) sequences
+    using CPU-based search against nucleotide databases.
 
     Parameters
     ----------
@@ -1307,7 +1503,25 @@ def compute_msa_local_batched(
             with msa_path.open("w") as f:
                 f.write("\n".join(csv_str))
 
+    # ---- Nucleotide MSA (DNA/RNA) for all targets ----
+    nuc_total = 0
+    if nucleotide_targets:
+        for target_id, nuc_data in nucleotide_targets.items():
+            if nuc_data:
+                nuc_total += len(nuc_data)
+                _compute_nucleotide_msa(
+                    nucleotide_data=nuc_data,
+                    target_id=target_id,
+                    msa_dir=msa_dir,
+                    mmseqs_binary=mmseqs_binary,
+                    mmseqs_db_dir=mmseqs_db_dir,
+                    rna_db_dir=rna_db_dir,
+                    threads=threads,
+                    temp_dir=temp_dir,
+                    sensitivity=sensitivity,
+                )
+
     click.echo(
-        f"Batched MSA generation complete: {total_seqs} sequences "
-        f"across {len(targets)} targets"
+        f"Batched MSA generation complete: {total_seqs} protein + "
+        f"{nuc_total} nucleotide sequences across {len(targets)} targets"
     )
