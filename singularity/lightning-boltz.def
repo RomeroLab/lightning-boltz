@@ -1,0 +1,42 @@
+# Lightning-Boltz Singularity Definition File
+#
+# Build from Docker Hub (or your own registry):
+#   singularity build lightning-boltz.sif singularity/lightning-boltz.def
+#
+# Or pull directly (no .def needed):
+#   singularity pull lightning-boltz.sif docker://romerolabduke/lightning-boltz:latest
+#
+# Run:
+#   singularity run --nv lightning-boltz.sif boltz predict input.yaml \
+#       --use_mmseqs_gpu --mmseqs_db_dir /data/boltz_dbs
+#
+# To use a custom registry, change the From: line below.
+
+Bootstrap: docker
+From: romerolabduke/lightning-boltz:latest
+
+%labels
+    Author Romero Lab, Duke University
+    Description Lightning-Boltz: Boltz + MMseqs2-GPU MSA generation
+
+%help
+    Lightning-Boltz: GPU-accelerated biomolecular structure prediction
+    with local MSA generation via MMseqs2-GPU.
+
+    Usage:
+      singularity run --nv lightning-boltz.sif boltz predict input.yaml \
+          --use_mmseqs_gpu --mmseqs_db_dir /data/boltz_dbs
+
+    The --nv flag enables GPU passthrough (required).
+
+    Mount your databases and input/output directories as needed:
+      singularity run --nv \
+          --bind /data/boltz_dbs:/dbs \
+          --bind ./inputs:/inputs \
+          --bind ./outputs:/outputs \
+          lightning-boltz.sif \
+          boltz predict /inputs/prot.yaml \
+              --use_mmseqs_gpu --mmseqs_db_dir /dbs --out_dir /outputs
+
+%runscript
+    exec "$@"
