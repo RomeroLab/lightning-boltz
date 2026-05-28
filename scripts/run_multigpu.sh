@@ -57,6 +57,7 @@ GPU_LIST=""
 THREADS_PER_GPU=""
 TEMP_DIR=""
 EXTRA_ARGS=""
+ALLOW_MISSING_PREDICTIONS="${ALLOW_MISSING_PREDICTIONS:-0}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -189,6 +190,7 @@ echo "=== Starting parallel predictions (${NUM_GPUS} GPUs) ==="
 PIDS=()
 LOGS=()
 GPU_OUT_DIRS=()
+PARTITION_COUNTS=()
 
 for ((i=0; i<NUM_GPUS; i++)); do
     GPU_IDX="${GPU_ARRAY[$i]}"
@@ -200,11 +202,12 @@ for ((i=0; i<NUM_GPUS; i++)); do
     GPU_OUT_DIRS+=("$GPU_OUT")
 
     PART_COUNT=$(find "${PARTITION_DIR}" -type l 2>/dev/null | wc -l | tr -d ' ')
+    PARTITION_COUNTS+=("$PART_COUNT")
     echo "  Starting GPU ${GPU_IDX} (${PART_COUNT} inputs) -> ${GPU_LOG}"
 
     # Build the boltz predict command
     CMD="boltz predict ${PARTITION_DIR}"
-    CMD="${CMD} --use_mmseqs_gpu"
+    CMD="${CMD} --use_colabfold_search"
     CMD="${CMD} --mmseqs_db_dir ${DB_DIR}"
     CMD="${CMD} --mmseqs_gpu_device 0"
     CMD="${CMD} --mmseqs_threads ${THREADS_PER_GPU}"
@@ -267,22 +270,46 @@ CONSOLIDATED_DIR="${OUT_DIR}/predictions"
 mkdir -p "$CONSOLIDATED_DIR"
 
 TOTAL_PREDICTIONS=0
+MISSING_PREDICTIONS=0
+DUPLICATE_PREDICTIONS=0
+GPU_PREDICTION_COUNTS=()
 for gpu_out in "${GPU_OUT_DIRS[@]}"; do
+    GPU_PREDICTIONS=0
     if [ -d "$gpu_out" ]; then
         # Find all prediction directories and symlink them into consolidated dir
         for pred_dir in "$gpu_out"/boltz_results_*/predictions/*/; do
             if [ -d "$pred_dir" ]; then
+                GPU_PREDICTIONS=$((GPU_PREDICTIONS + 1))
                 PRED_NAME=$(basename "$pred_dir")
                 if [ ! -e "${CONSOLIDATED_DIR}/${PRED_NAME}" ]; then
                     ln -sf "$(realpath "$pred_dir")" "${CONSOLIDATED_DIR}/${PRED_NAME}"
                     TOTAL_PREDICTIONS=$((TOTAL_PREDICTIONS + 1))
+                else
+                    DUPLICATE_PREDICTIONS=$((DUPLICATE_PREDICTIONS + 1))
                 fi
             fi
         done
     fi
+    GPU_PREDICTION_COUNTS+=("$GPU_PREDICTIONS")
+done
+
+for ((i=0; i<NUM_GPUS; i++)); do
+    expected="${PARTITION_COUNTS[$i]}"
+    observed="${GPU_PREDICTION_COUNTS[$i]}"
+    if [ "$observed" -lt "$expected" ]; then
+        missing=$((expected - observed))
+        MISSING_PREDICTIONS=$((MISSING_PREDICTIONS + missing))
+        echo "  WARNING: GPU ${GPU_ARRAY[$i]} produced ${observed}/${expected} predictions"
+    fi
 done
 
 echo "  ${TOTAL_PREDICTIONS} predictions consolidated to ${CONSOLIDATED_DIR}"
+if [ "$DUPLICATE_PREDICTIONS" -ne 0 ]; then
+    echo "  WARNING: ${DUPLICATE_PREDICTIONS} duplicate prediction names skipped during consolidation"
+fi
+if [ "$MISSING_PREDICTIONS" -ne 0 ]; then
+    echo "  WARNING: ${MISSING_PREDICTIONS} predictions missing from per-GPU outputs"
+fi
 
 # ---------------------------------------------------------------------------
 # Write timing summary
@@ -294,6 +321,8 @@ cat > "$TIMING_FILE" <<EOF
   "total_inputs": ${TOTAL_INPUTS},
   "total_predictions": ${TOTAL_PREDICTIONS},
   "failures": ${FAILURES},
+  "missing_predictions": ${MISSING_PREDICTIONS},
+  "duplicate_predictions": ${DUPLICATE_PREDICTIONS},
   "total_wall_seconds": ${TOTAL_SECONDS},
   "batch_size": ${BATCH_SIZE},
   "threads_per_gpu": ${THREADS_PER_GPU},
@@ -312,6 +341,8 @@ echo "Total wall time:    ${TOTAL_SECONDS} seconds"
 echo "Inputs processed:   ${TOTAL_INPUTS}"
 echo "Predictions:        ${TOTAL_PREDICTIONS}"
 echo "Failures:           ${FAILURES}"
+echo "Missing predictions:${MISSING_PREDICTIONS}"
+echo "Duplicate names:    ${DUPLICATE_PREDICTIONS}"
 echo "Consolidated dir:   ${CONSOLIDATED_DIR}"
 echo "Timing JSON:        ${TIMING_FILE}"
 echo ""
@@ -324,5 +355,9 @@ echo "End time: $(date)"
 echo "=========================================="
 
 if [ "$FAILURES" -ne 0 ]; then
+    exit 1
+fi
+
+if [ "$MISSING_PREDICTIONS" -ne 0 ] && [ "$ALLOW_MISSING_PREDICTIONS" != "1" ]; then
     exit 1
 fi

@@ -221,21 +221,40 @@ downloadFile() {
     FILENAME=$(basename "$OUTPUT")
     local DIR
     DIR=$(dirname "$OUTPUT")
+    local FOUND_TOOL=false
+
+    local ARIA2_HEADERS=()
+    local CURL_HEADERS=()
+    local WGET_HEADERS=()
+    if [ -n "${HF_TOKEN:-}" ]; then
+        ARIA2_HEADERS=(--header="Authorization: Bearer ${HF_TOKEN}")
+        CURL_HEADERS=(-H "Authorization: Bearer ${HF_TOKEN}")
+        WGET_HEADERS=(--header="Authorization: Bearer ${HF_TOKEN}")
+    fi
 
     # All tools support resume (-c / -C - / --continue) for interrupted downloads
     if command -v aria2c &> /dev/null; then
+        FOUND_TOOL=true
         aria2c --max-connection-per-server=8 --allow-overwrite=true \
             --continue=true \
+            "${ARIA2_HEADERS[@]}" \
             -o "$FILENAME" -d "$DIR" "$URL" && return 0
     fi
     if command -v curl &> /dev/null; then
-        curl -L -C - -o "$OUTPUT" "$URL" && return 0
+        FOUND_TOOL=true
+        curl -L -C - "${CURL_HEADERS[@]}" -o "$OUTPUT" "$URL" && return 0
     fi
     if command -v wget &> /dev/null; then
-        wget -c --progress=bar:force:noscroll -O "$OUTPUT" "$URL" && return 0
+        FOUND_TOOL=true
+        wget -c --progress=bar:force:noscroll "${WGET_HEADERS[@]}" -O "$OUTPUT" "$URL" && return 0
     fi
 
-    echo "ERROR: No download tool found (tried aria2c, curl, wget)"
+    if [ "$FOUND_TOOL" = true ]; then
+        echo "ERROR: Failed to download: $URL"
+        echo "       If this is a private HuggingFace file, set HF_TOKEN to a token with access."
+    else
+        echo "ERROR: No download tool found (tried aria2c, curl, wget)"
+    fi
     exit 1
 }
 

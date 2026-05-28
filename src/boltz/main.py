@@ -1158,6 +1158,8 @@ def cli() -> None:
 )
 @click.option(
     "--use_colabfold_search",
+    "--use_mmseqs_gpu",
+    "use_colabfold_search",
     is_flag=True,
     help="Use local ColabFold search with GPU-accelerated MMseqs against the "
     "ColabFold databases (uniref30 + envdb). DNA/RNA chains use the nucleotide "
