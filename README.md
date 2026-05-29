@@ -2,7 +2,7 @@
 
 # Lightning-Boltz
 
-Ultra-high-throughput inference with [Boltz-2](https://doi.org/10.1101/2025.06.14.659707). Replaces the MMSeqs2 web server dependency with local [MMseqs2-GPU](https://github.com/soedinglab/MMseqs2) for GPU-accelerated MSA generation. Inference can run offline with no rate limits or network latency.
+Ultra-high-throughput inference with [Boltz-2](https://doi.org/10.1101/2025.06.14.659707). Replaces the MMSeqs2 web server dependency with a local, GPU-accelerated [ColabFold](https://github.com/sokrypton/ColabFold) search (built on [MMseqs2-GPU](https://github.com/soedinglab/MMseqs2)) for MSA generation. Inference can run offline with no rate limits or network latency.
 
 Adapted techniques from [AlphaFast](https://github.com/RomeroLab/alphafast), which integrates MMseqs2-GPU into AlphaFold 3.
 
@@ -72,7 +72,7 @@ sequences:
 
 ```bash
 boltz predict input.yaml \
-    --use_mmseqs_gpu \
+    --use_colabfold_search \
     --mmseqs_db_dir /path/to/databases
 ```
 
@@ -123,7 +123,7 @@ docker run --gpus '"device=0"' \
     -v ./inputs:/inputs \
     -v ./outputs:/outputs \
     lightning-boltz \
-    boltz predict /inputs/prot.yaml --use_mmseqs_gpu --mmseqs_db_dir /dbs --out_dir /outputs
+    boltz predict /inputs/prot.yaml --use_colabfold_search --mmseqs_db_dir /dbs --out_dir /outputs
 ```
 
 ---
@@ -272,8 +272,8 @@ See [`modal/README.md`](modal/README.md) for architecture details and troublesho
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--use_mmseqs_gpu` | `False` | Enable local GPU MSA generation |
-| `--mmseqs_db_dir` | `$BOLTZ_MMSEQS_DB_DIR` | Path to MMseqs2 databases |
+| `--use_colabfold_search` | `False` | Enable local GPU-accelerated ColabFold MSA search |
+| `--mmseqs_db_dir` | `$BOLTZ_MMSEQS_DB_DIR` | Path to ColabFold/MMseqs2 databases |
 | `--mmseqs_gpu_device` | All GPUs | GPU device index for MSA search |
 | `--mmseqs_threads` | All cores | CPU threads for post-processing |
 | `--mmseqs_sensitivity` | `7.5` | Search sensitivity (1-7.5) |

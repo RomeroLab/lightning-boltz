@@ -204,7 +204,7 @@ for ((i=0; i<NUM_GPUS; i++)); do
 
     # Build the boltz predict command
     CMD="boltz predict ${PARTITION_DIR}"
-    CMD="${CMD} --use_mmseqs_gpu"
+    CMD="${CMD} --use_colabfold_search"
     CMD="${CMD} --mmseqs_db_dir ${DB_DIR}"
     CMD="${CMD} --mmseqs_gpu_device 0"
     CMD="${CMD} --mmseqs_threads ${THREADS_PER_GPU}"
